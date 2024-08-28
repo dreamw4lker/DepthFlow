@@ -13,11 +13,20 @@ from Broken.Externals.Depthmap import (
 )
 from Broken.Externals.Upscaler import NoUpscaler, Realesr, Waifu2x
 from DepthFlow import DEPTHFLOW, DepthScene
-
+from DepthFlow.Motion import Presets
 
 @define(slots=False)
 class DepthWebui:
     interface: gradio.Blocks = None
+
+    animations = {
+        "Vertical": Presets.Vertical,
+        "Horizontal": Presets.Horizontal,
+        "Zoom": Presets.Zoom,
+        "Circle": Presets.Circle,
+        "Dolly": Presets.Dolly,
+        "Orbital": Presets.Orbital
+    }
 
     qualities = {
         "Low": 0,
@@ -62,13 +71,17 @@ class DepthWebui:
         width, height = self.resolutions[resolution_name]
         return width, height
 
-    def render(self, image, depth, width, height, fps, quality, ssaa, time, repeat, estimator, upscaler):
+    def render(self, image, depth, width, height, fps, quality, ssaa, time, repeat, estimator, upscaler,
+               animation, intensity):
         if (image is None) or (depth is None):
             raise ValueError("Please provide an image and a depthmap")
 
         def _render():
             nonlocal output
             scene = DepthScene(backend="headless")
+            anim = self.animations[animation]()
+            anim.intensity = float(intensity)
+            scene.add_animation(anim)
             scene.set_estimator(self.estimators[estimator]())
             scene.set_upscaler(self.upscalers[upscaler]())
             scene.input(image=image, depth=depth)
@@ -114,6 +127,11 @@ class DepthWebui:
                         value=list(self.estimators.keys())[0],
                         label="Depth Estimator",
                     )
+                    self.animation = gradio.Dropdown(
+                        choices=list(self.animations.keys()),
+                        value="Orbital",
+                        label="Animations"
+                    )
                     self.estimator.change(
                         self.estimate_depth,
                         inputs=[self.estimator, self.image],
@@ -151,6 +169,10 @@ class DepthWebui:
                         minimum=1, maximum=10, step=1,
                         label="Number of Loops", value=1
                     )
+                    self.intensity = gradio.Slider(
+                        minimum=0.05, maximum=5, step=0.05,
+                        label="Intensity", value=1.0
+                    )
 
                 render = gradio.Button("Render", size="lg")
 
@@ -162,7 +184,7 @@ class DepthWebui:
 
                 render.click(
                     self.render,
-                    inputs=[self.image, self.depth, self.width, self.height, self.fps, self.quality, self.ssaa, self.time, self.repeat, self.estimator, self.upscaler],
+                    inputs=[self.image, self.depth, self.width, self.height, self.fps, self.quality, self.ssaa, self.time, self.repeat, self.estimator, self.upscaler, self.animation, self.intensity],
                     outputs=[self.video]
                 )
 
